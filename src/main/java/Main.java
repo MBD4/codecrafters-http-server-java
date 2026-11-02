@@ -9,7 +9,6 @@ public class Main {
         // You can use print statements as follows for debugging, they'll be visible when running tests.
         // System.out.println("Logs from your program will appear here!");
         // TODO: Uncomment the code below to pass the first stage
-
         try {
             ServerSocket serverSocket = new ServerSocket(4221);
             // Since the tester restarts your program quite often, setting SO_REUSEADDR
@@ -17,10 +16,13 @@ public class Main {
             serverSocket.setReuseAddress(true);
 
             // Wait for connection from client.
-            Socket socket = serverSocket.accept();
-            System.out.println("accepted new connection");
-            RequestHandler.handleRequest(socket);
-            socket.close();
+            while (true) {
+                Socket socket = serverSocket.accept();
+                System.out.println("accepted new connection");
+                RequestHandler requestHandler = new RequestHandler(socket);
+                Thread thread = new Thread(requestHandler);
+                thread.start();
+            }
 
         } catch (IOException e) {
             System.out.println("IOException: " + e.getMessage());
