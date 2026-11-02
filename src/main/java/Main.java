@@ -6,20 +6,22 @@ import java.net.Socket;
 
 public class Main {
     public static void main(String[] args) {
-        // You can use print statements as follows for debugging, they'll be visible when running tests.
-        // System.out.println("Logs from your program will appear here!");
-        // TODO: Uncomment the code below to pass the first stage
+        String rootDirectory = null;
+        if (args.length > 1) {
+            if (args[0].equals("--directory")) {
+                rootDirectory = args[1];
+            }
+        }
         try {
             ServerSocket serverSocket = new ServerSocket(4221);
             // Since the tester restarts your program quite often, setting SO_REUSEADDR
             // ensures that we don't run into 'Address already in use' errors
             serverSocket.setReuseAddress(true);
 
-            // Wait for connection from client.
             while (true) {
                 Socket socket = serverSocket.accept();
                 System.out.println("accepted new connection");
-                RequestHandler requestHandler = new RequestHandler(socket);
+                RequestHandler requestHandler = new RequestHandler(socket, rootDirectory);
                 Thread thread = new Thread(requestHandler);
                 thread.start();
             }
