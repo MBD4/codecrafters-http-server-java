@@ -36,6 +36,7 @@ public class RequestHandler implements Runnable {
                 requestHeaders.add(currentLine);
             }
 
+
             // get the request body
             String requestBody = null;
             if (getRequestHeaderValue(requestHeaders,"Content-Length") != null) {
