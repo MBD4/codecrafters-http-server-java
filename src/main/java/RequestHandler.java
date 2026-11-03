@@ -25,6 +25,8 @@ public class RequestHandler implements Runnable {
             String requestLine = reader.readLine();
             String requestType = requestLine.split(" ")[0];
             String slashParameter = requestLine.split(" ")[1];
+
+            // get request headers
             List<String> requestHeaders = new ArrayList<>();
             while (true) {
                 String currentLine = reader.readLine();
@@ -33,6 +35,8 @@ public class RequestHandler implements Runnable {
                 }
                 requestHeaders.add(currentLine);
             }
+
+            // get the request body
             String requestBody = null;
             if (getRequestHeaderValue(requestHeaders,"Content-Length") != null) {
                 int contentLength = Integer.parseInt(getRequestHeaderValue(requestHeaders,"Content-Length"));
@@ -51,11 +55,25 @@ public class RequestHandler implements Runnable {
                 }
                 requestBody = new String(buffer);
             }
+
+            String responseLine = "";
+            String responseHeaders = "";
+            String responseBody = "";
+
+            // get compression type. if = null, no compression type is used
+            String compressionType = getRequestHeaderValue(requestHeaders, "Accept-Encoding");
+            if(!(compressionType == null) && compressionType.equals("gzip")) {
+                responseHeaders += "Content-Encoding: gzip\r\n";
+            }
+
+            Request request = new Request(slashParameter, requestHeaders, requestBody, responseLine, responseHeaders, responseBody);
             if (requestType.equals("GET")) {
-                out.write(getRequest(slashParameter, requestHeaders, requestBody).getBytes(StandardCharsets.UTF_8));
+                boolean succes = getRequest(request);
+                out.write((request.getResponseLine() + "\r\n" + request.getResponseHeaders() + "\r\n" + request.getResponseBody()).getBytes(StandardCharsets.UTF_8));
             }
             else if (requestType.equals("POST")) {
-                out.write(postRequest(slashParameter, requestHeaders, requestBody).getBytes(StandardCharsets.UTF_8));
+                boolean succes = postRequest(request);
+                out.write((request.getResponseLine() + "\r\n" + request.getResponseHeaders() + "\r\n" + request.getResponseBody()).getBytes(StandardCharsets.UTF_8));
             }
         }
         catch (Exception e) {
@@ -63,58 +81,76 @@ public class RequestHandler implements Runnable {
         }
     }
 
-    private String postRequest(String slashParameter, List<String> requestHeaders, String requestBody) {
-        if (slashParameter.startsWith("/files/")) {
+    private boolean postRequest(Request request) {
+        if (request.getSlashParameter().startsWith("/files/")) {
             if (rootDirectory == null) {
-                return "HTTP/1.1 400 Bad Request (add --directory root)\r\n\r\n";
+                request.setResponseLine("HTTP/1.1 400 Bad Request (add --directory root)");
+                return false;
             }
             try {
-                String tmpRoot = slashParameter.substring(slashParameter.indexOf("/") + 1, slashParameter.indexOf("/", 1));
-                writeFile(slashParameter.replaceFirst(tmpRoot, rootDirectory), requestBody);
-                return "HTTP/1.1 201 Created\r\n\r\n";
+                String tmpRoot = request.getSlashParameter().substring(request.getSlashParameter().indexOf("/") + 1, request.getSlashParameter().indexOf("/", 1));
+                writeFile(request.getSlashParameter().replaceFirst(tmpRoot, rootDirectory), request.getRequestBody());
+                request.setResponseLine("HTTP/1.1 201 Created");
+                return true;
             } catch (IOException e) {
                 System.err.println(Arrays.toString(e.getStackTrace()));
-                return "HTTP/1.1 404 Not Found\r\n\r\n";
+                request.setResponseLine("HTTP/1.1 404 Not Found");
+                return false;
             }
         }
         else {
-            return "HTTP/1.1 404 Not Found\r\n\r\n";
+            request.setResponseLine("HTTP/1.1 404 Not Found");
+            return false;
         }
     }
 
-    private String getRequest(String slashParameter, List<String> requestHeaders, String requestBody) throws IOException {
-        if (slashParameter.startsWith("/files/")) {
+    private boolean getRequest(Request request) throws IOException {
+        if (request.getSlashParameter().startsWith("/files/")) {
             if (rootDirectory == null) {
-                return "HTTP/1.1 400 Bad Request (add --directory root)\r\n\r\n";
+                request.setResponseLine("HTTP/1.1 400 Bad Request (add --directory root)");
+                return false;
             }
             try {
-                String tmpRoot = slashParameter.substring(slashParameter.indexOf("/") + 1, slashParameter.indexOf("/", 1));
-                String fileContent = readFile(slashParameter.replaceFirst(tmpRoot, rootDirectory));
-                return "HTTP/1.1 200 OK\r\n" + "Content-Type: application/octet-stream\r\n" + "Content-Length: "
-                        + fileContent.getBytes(StandardCharsets.UTF_8).length + "\r\n\r\n" + fileContent;
+                String tmpRoot = request.getSlashParameter().substring(request.getSlashParameter().indexOf("/") + 1, request.getSlashParameter().indexOf("/", 1));
+                String fileContent = readFile(request.getSlashParameter().replaceFirst(tmpRoot, rootDirectory));
+                request.setResponseLine("HTTP/1.1 200 OK");
+                request.addResponseHeader("Content-Type: application/octet-stream");
+                request.addResponseHeader("Content-Length: " + fileContent.getBytes(StandardCharsets.UTF_8).length);
+                request.setResponseBody(fileContent);
+                return true;
 
             } catch (IOException e) {
-                return "HTTP/1.1 404 Not Found\r\n\r\n";
+                request.setResponseLine("HTTP/1.1 404 Not Found");
+                return false;
             }
         }
-        else if (slashParameter.equals("/")) {
-            return "HTTP/1.1 200 OK\r\n\r\n";
+        else if (request.getSlashParameter().equals("/")) {
+            request.setResponseLine("HTTP/1.1 200 OK");
+            return true;
         }
-        else if (slashParameter.startsWith("/echo/")) {
-            String stringToEcho = slashParameter.substring("/echo/".length());
-            return "HTTP/1.1 200 OK\r\n" + "Content-Type: text/plain\r\n" + "Content-Length: "
-                    + stringToEcho.getBytes(StandardCharsets.UTF_8).length + "\r\n\r\n" + stringToEcho;
+        else if (request.getSlashParameter().startsWith("/echo/")) {
+            String stringToEcho = request.getSlashParameter().substring("/echo/".length());
+            request.setResponseLine("HTTP/1.1 200 OK");
+            request.addResponseHeader("Content-Type: text/plain");
+            request.addResponseHeader("Content-Length: " + stringToEcho.getBytes(StandardCharsets.UTF_8).length);
+            request.setResponseBody(stringToEcho);
+            return true;
         }
-        else if (slashParameter.startsWith("/user-agent")) {
-            String userAgentValue = getRequestHeaderValue(requestHeaders, "User-Agent");
+        else if (request.getSlashParameter().startsWith("/user-agent")) {
+            String userAgentValue = getRequestHeaderValue(request.getRequestHeaders(), "User-Agent");
             if (userAgentValue == null) {
-                return "HTTP/1.1 400 Bad Request\r\n\r\n";
+                request.setResponseLine("HTTP/1.1 400 Bad Request");
+                return false;
             }
-            return "HTTP/1.1 200 OK\r\n" + "Content-Type: text/plain\r\n" + "Content-Length: "
-                    + userAgentValue.getBytes(StandardCharsets.UTF_8).length + "\r\n\r\n" + userAgentValue;
+            request.setResponseLine("HTTP/1.1 200 OK");
+            request.addResponseHeader("Content-Type: text/plain");
+            request.addResponseHeader("Content-Length: " + userAgentValue.getBytes(StandardCharsets.UTF_8).length);
+            request.setResponseBody(userAgentValue);
+            return true;
         }
         else {
-            return "HTTP/1.1 404 Not Found\r\n\r\n";
+            request.setResponseLine("HTTP/1.1 404 Not Found");
+            return false;
         }
     }
 
