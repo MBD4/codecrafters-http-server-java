@@ -42,17 +42,14 @@ public class RequestHandler implements Runnable {
                 int contentLength = Integer.parseInt(getRequestHeaderValue(requestHeaders,"Content-Length"));
                 char[] buffer = new char[contentLength];
                 int totalCharsRead = 0;
-                while (true) {
+                do {
                     int charsRead = reader.read(buffer, totalCharsRead, contentLength - totalCharsRead);
                     if (charsRead == -1) {
                         out.write("HTTP/1.1 500 Server error\r\n\r\n".getBytes(StandardCharsets.UTF_8));
                         return;
                     }
                     totalCharsRead += charsRead;
-                    if (totalCharsRead == contentLength) {
-                        break;
-                    }
-                }
+                } while (totalCharsRead != contentLength);
                 requestBody = new String(buffer);
             }
 
@@ -62,7 +59,7 @@ public class RequestHandler implements Runnable {
 
             // get compression type. if = null, no compression type is used
             String compressionType = getRequestHeaderValue(requestHeaders, "Accept-Encoding");
-            if(!(compressionType == null) && compressionType.equals("gzip")) {
+            if(!(compressionType == null) && compressionType.contains("gzip")) {
                 responseHeaders += "Content-Encoding: gzip\r\n";
             }
 
