@@ -1,4 +1,5 @@
 import java.util.List;
+import java.util.Map;
 
 public class Request {
 
@@ -6,10 +7,10 @@ public class Request {
     private List<String> requestHeaders;
     private String requestBody;
     private String responseLine;
-    private String responseHeaders;
-    private String responseBody;
+    private Map<String,String> responseHeaders;
+    private byte[] responseBody;
 
-    public Request(String slashParameter, List<String> requestHeaders, String requestBody, String responseLine, String responseHeaders, String responseBody) {
+    public Request(String slashParameter, List<String> requestHeaders, String requestBody, String responseLine, Map<String,String> responseHeaders, byte[] responseBody) {
         this.slashParameter = slashParameter;
         this.requestHeaders = requestHeaders;
         this.requestBody = requestBody;
@@ -50,23 +51,33 @@ public class Request {
         this.responseLine = responseLine;
     }
 
-    public String getResponseHeaders() {
+    public Map<String,String> getResponseHeaders() {
         return responseHeaders;
     }
 
-    public void setResponseHeaders(String responseHeaders) {
+    public void setResponseHeaders(Map<String,String> responseHeaders) {
         this.responseHeaders = responseHeaders;
     }
 
-    public void addResponseHeader(String header) {
-        responseHeaders += header + "\r\n";
+    public void addResponseHeader(String key, String value) {
+        responseHeaders.put(key, value);
     }
 
-    public String getResponseBody() {
+    public void changeResponseHeader(String headerKey, String newHeaderValue) {
+        responseHeaders.replace(headerKey, newHeaderValue);
+    }
+
+    public String responseHeadersToString() {
+        StringBuilder sb = new StringBuilder();
+        responseHeaders.forEach((key, value) -> sb.append(key).append(": ").append(value).append("\r\n"));
+        return sb.toString();
+    }
+
+    public byte[] getResponseBody() {
         return responseBody;
     }
 
-    public void setResponseBody(String responseBody) {
+    public void setResponseBody(byte[] responseBody) {
         this.responseBody = responseBody;
     }
 }

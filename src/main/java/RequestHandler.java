@@ -3,9 +3,8 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
+import java.util.zip.GZIPOutputStream;
 
 public class RequestHandler implements Runnable {
 
@@ -55,23 +54,36 @@ public class RequestHandler implements Runnable {
             }
 
             String responseLine = "";
-            String responseHeaders = "";
-            String responseBody = "";
-
-            // get compression type. if = null, no compression type is used
-            String compressionType = getRequestHeaderValue(requestHeaders, "Accept-Encoding");
-            if(!(compressionType == null) && compressionType.contains("gzip")) {
-                responseHeaders += "Content-Encoding: gzip\r\n";
-            }
+            Map<String,String> responseHeaders = new HashMap<>();
+            byte[] responseBody = new byte[0];
 
             Request request = new Request(slashParameter, requestHeaders, requestBody, responseLine, responseHeaders, responseBody);
             if (requestType.equals("GET")) {
                 boolean succes = getRequest(request);
-                out.write((request.getResponseLine() + "\r\n" + request.getResponseHeaders() + "\r\n" + request.getResponseBody()).getBytes(StandardCharsets.UTF_8));
+                String compressionType = getRequestHeaderValue(requestHeaders, "Accept-Encoding");
+                if(!(compressionType == null) && compressionType.contains("gzip")) {
+                    if (request.getResponseBody() != null && !(request.getResponseBody().length == 0)) {
+                        request.addResponseHeader("Content-Encoding",  "gzip");
+
+                        // create a byte bucket to hold the final compressed data
+                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
+                        // route uncompressed text bytes through GZIP, which writes compressed binary bytes into "bos"
+                        try (GZIPOutputStream gzos = new GZIPOutputStream(bos)) {
+                            gzos.write(request.getResponseBody());
+                        }
+
+                        request.setResponseBody(bos.toByteArray());
+                        request.changeResponseHeader("Content-Length", String.valueOf(request.getResponseBody().length));
+                    }
+                }
+                out.write((request.getResponseLine() + "\r\n" + request.responseHeadersToString() + "\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(request.getResponseBody());
             }
             else if (requestType.equals("POST")) {
                 boolean succes = postRequest(request);
-                out.write((request.getResponseLine() + "\r\n" + request.getResponseHeaders() + "\r\n" + request.getResponseBody()).getBytes(StandardCharsets.UTF_8));
+                out.write((request.getResponseLine() + "\r\n" + request.responseHeadersToString() + "\r\n").getBytes(StandardCharsets.UTF_8));
+                out.write(request.getResponseBody());
             }
         }
         catch (Exception e) {
@@ -110,10 +122,10 @@ public class RequestHandler implements Runnable {
             }
             try {
                 String tmpRoot = request.getSlashParameter().substring(request.getSlashParameter().indexOf("/") + 1, request.getSlashParameter().indexOf("/", 1));
-                String fileContent = readFile(request.getSlashParameter().replaceFirst(tmpRoot, rootDirectory));
+                byte[] fileContent = readFile(request.getSlashParameter().replaceFirst(tmpRoot, rootDirectory));
                 request.setResponseLine("HTTP/1.1 200 OK");
-                request.addResponseHeader("Content-Type: application/octet-stream");
-                request.addResponseHeader("Content-Length: " + fileContent.getBytes(StandardCharsets.UTF_8).length);
+                request.addResponseHeader("Content-Type", "application/octet-stream");
+                request.addResponseHeader("Content-Length", String.valueOf(fileContent.length));
                 request.setResponseBody(fileContent);
                 return true;
 
@@ -129,9 +141,9 @@ public class RequestHandler implements Runnable {
         else if (request.getSlashParameter().startsWith("/echo/")) {
             String stringToEcho = request.getSlashParameter().substring("/echo/".length());
             request.setResponseLine("HTTP/1.1 200 OK");
-            request.addResponseHeader("Content-Type: text/plain");
-            request.addResponseHeader("Content-Length: " + stringToEcho.getBytes(StandardCharsets.UTF_8).length);
-            request.setResponseBody(stringToEcho);
+            request.addResponseHeader("Content-Type", "text/plain");
+            request.addResponseHeader("Content-Length", String.valueOf(stringToEcho.getBytes(StandardCharsets.UTF_8).length));
+            request.setResponseBody(stringToEcho.getBytes(StandardCharsets.UTF_8));
             return true;
         }
         else if (request.getSlashParameter().startsWith("/user-agent")) {
@@ -141,9 +153,9 @@ public class RequestHandler implements Runnable {
                 return false;
             }
             request.setResponseLine("HTTP/1.1 200 OK");
-            request.addResponseHeader("Content-Type: text/plain");
-            request.addResponseHeader("Content-Length: " + userAgentValue.getBytes(StandardCharsets.UTF_8).length);
-            request.setResponseBody(userAgentValue);
+            request.addResponseHeader("Content-Type",  "text/plain");
+            request.addResponseHeader("Content-Length", String.valueOf(userAgentValue.getBytes(StandardCharsets.UTF_8).length));
+            request.setResponseBody(userAgentValue.getBytes(StandardCharsets.UTF_8));
             return true;
         }
         else {
@@ -165,9 +177,9 @@ public class RequestHandler implements Runnable {
         return headerToReturn;
     }
 
-    private String readFile(String file) throws IOException {
+    private byte[] readFile(String file) throws IOException {
         Path path = Path.of(file);
-        return Files.readString(path);
+        return Files.readAllBytes(path);
     }
 
     private void writeFile(String file, String content) throws IOException {
