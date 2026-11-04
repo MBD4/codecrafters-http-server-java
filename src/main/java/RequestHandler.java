@@ -18,72 +18,85 @@ public class RequestHandler implements Runnable {
 
     @Override
     public void run() {
-        try (socket) {
+        try (socket){
             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             OutputStream out = socket.getOutputStream();
-            String requestLine = reader.readLine();
-            String requestType = requestLine.split(" ")[0];
-            String slashParameter = requestLine.split(" ")[1];
+            String firstLine;
+            while ((firstLine = reader.readLine()) != null) {
+                String requestLine = firstLine;
+                String requestType = requestLine.split(" ")[0];
+                String slashParameter = requestLine.split(" ")[1];
 
-            // get request headers
-            List<String> requestHeaders = new ArrayList<>();
-            while (true) {
-                String currentLine = reader.readLine();
-                if (currentLine.isEmpty()) {
-                    break;
-                }
-                requestHeaders.add(currentLine);
-            }
-
-
-            //get the request body
-            String requestBody = null;
-            if (getRequestHeaderValue(requestHeaders,"Content-Length") != null) {
-                int contentLength = Integer.parseInt(getRequestHeaderValue(requestHeaders,"Content-Length"));
-                char[] buffer = new char[contentLength];
-                int totalCharsRead = 0;
-                do {
-                    int charsRead = reader.read(buffer, totalCharsRead, contentLength - totalCharsRead);
-                    if (charsRead == -1) {
-                        out.write("HTTP/1.1 500 Server error\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-                        return;
+                // get request headers
+                List<String> requestHeaders = new ArrayList<>();
+                while (true) {
+                    String currentLine = reader.readLine();
+                    if (currentLine.isEmpty()) {
+                        break;
                     }
-                    totalCharsRead += charsRead;
-                } while (totalCharsRead != contentLength);
-                requestBody = new String(buffer);
-            }
+                    requestHeaders.add(currentLine);
+                }
 
-            String responseLine = "";
-            Map<String,String> responseHeaders = new HashMap<>();
-            byte[] responseBody = new byte[0];
 
-            Request request = new Request(slashParameter, requestHeaders, requestBody, responseLine, responseHeaders, responseBody);
-            if (requestType.equals("GET")) {
-                boolean succes = getRequest(request);
-                String compressionType = getRequestHeaderValue(requestHeaders, "Accept-Encoding");
-                if(!(compressionType == null) && compressionType.contains("gzip")) {
-                    if (request.getResponseBody() != null && !(request.getResponseBody().length == 0)) {
-                        request.addResponseHeader("Content-Encoding",  "gzip");
-
-                        // create a byte bucket to hold the final compressed data
-                        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-
-                        // route uncompressed text bytes through GZIP, which writes compressed binary bytes into "bos"
-                        try (GZIPOutputStream gzos = new GZIPOutputStream(bos)) {
-                            gzos.write(request.getResponseBody());
+                //get the request body
+                String requestBody = null;
+                if (getRequestHeaderValue(requestHeaders, "Content-Length") != null) {
+                    int contentLength = Integer.parseInt(getRequestHeaderValue(requestHeaders, "Content-Length"));
+                    char[] buffer = new char[contentLength];
+                    int totalCharsRead = 0;
+                    do {
+                        int charsRead = reader.read(buffer, totalCharsRead, contentLength - totalCharsRead);
+                        if (charsRead == -1) {
+                            out.write("HTTP/1.1 500 Server error\r\n\r\n".getBytes(StandardCharsets.UTF_8));
+                            return;
                         }
-
-                        request.setResponseBody(bos.toByteArray());
-                        request.changeResponseHeader("Content-Length", String.valueOf(request.getResponseBody().length));
-                    }
+                        totalCharsRead += charsRead;
+                    } while (totalCharsRead != contentLength);
+                    requestBody = new String(buffer);
                 }
-                out.write((request.getResponseLine() + "\r\n" + request.responseHeadersToString() + "\r\n").getBytes(StandardCharsets.UTF_8));
-                out.write(request.getResponseBody());
-            }
-            else if (requestType.equals("POST")) {
-                boolean succes = postRequest(request);
-                out.write((request.getResponseLine() + "\r\n" + request.responseHeadersToString() + "\r\n").getBytes(StandardCharsets.UTF_8));
-                out.write(request.getResponseBody());
+
+                String responseLine = "";
+                Map<String, String> responseHeaders = new HashMap<>();
+                byte[] responseBody = new byte[0];
+
+                Request request = new Request(slashParameter, requestHeaders, requestBody, responseLine, responseHeaders, responseBody);
+                if (requestType.equals("GET")) {
+                    boolean succes = getRequest(request);
+                    String compressionType = getRequestHeaderValue(requestHeaders, "Accept-Encoding");
+                    if (!(compressionType == null) && compressionType.contains("gzip")) {
+                        if (request.getResponseBody() != null && !(request.getResponseBody().length == 0)) {
+                            request.addResponseHeader("Content-Encoding", "gzip");
+
+                            // create a byte bucket to hold the final compressed data
+                            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
+                            // route uncompressed text bytes through GZIP, which writes compressed binary bytes into "bos"
+                            try (GZIPOutputStream gzos = new GZIPOutputStream(bos)) {
+                                gzos.write(request.getResponseBody());
+                            }
+
+                            request.setResponseBody(bos.toByteArray());
+                        }
+                    }
+                    if (request.getResponseBody().length == 0) {
+                        request.addResponseHeader("Content-Length", "0");
+                    }
+                    else {
+                        request.addResponseHeader("Content-Length", String.valueOf(request.getResponseBody().length));
+                    }
+                    out.write((request.getResponseLine() + "\r\n" + request.responseHeadersToString() + "\r\n").getBytes(StandardCharsets.UTF_8));
+                    out.write(request.getResponseBody());
+                } else if (requestType.equals("POST")) {
+                    boolean succes = postRequest(request);
+                    if (request.getResponseBody().length == 0) {
+                        request.addResponseHeader("Content-Length", "0");
+                    }
+                    else {
+                        request.addResponseHeader("Content-Length", String.valueOf(request.getResponseBody().length));
+                    }
+                    out.write((request.getResponseLine() + "\r\n" + request.responseHeadersToString() + "\r\n").getBytes(StandardCharsets.UTF_8));
+                    out.write(request.getResponseBody());
+                }
             }
         }
         catch (Exception e) {
@@ -125,7 +138,6 @@ public class RequestHandler implements Runnable {
                 byte[] fileContent = readFile(request.getSlashParameter().replaceFirst(tmpRoot, rootDirectory));
                 request.setResponseLine("HTTP/1.1 200 OK");
                 request.addResponseHeader("Content-Type", "application/octet-stream");
-                request.addResponseHeader("Content-Length", String.valueOf(fileContent.length));
                 request.setResponseBody(fileContent);
                 return true;
 
@@ -142,7 +154,6 @@ public class RequestHandler implements Runnable {
             String stringToEcho = request.getSlashParameter().substring("/echo/".length());
             request.setResponseLine("HTTP/1.1 200 OK");
             request.addResponseHeader("Content-Type", "text/plain");
-            request.addResponseHeader("Content-Length", String.valueOf(stringToEcho.getBytes(StandardCharsets.UTF_8).length));
             request.setResponseBody(stringToEcho.getBytes(StandardCharsets.UTF_8));
             return true;
         }
@@ -154,7 +165,6 @@ public class RequestHandler implements Runnable {
             }
             request.setResponseLine("HTTP/1.1 200 OK");
             request.addResponseHeader("Content-Type",  "text/plain");
-            request.addResponseHeader("Content-Length", String.valueOf(userAgentValue.getBytes(StandardCharsets.UTF_8).length));
             request.setResponseBody(userAgentValue.getBytes(StandardCharsets.UTF_8));
             return true;
         }
