@@ -84,8 +84,12 @@ public class RequestHandler implements Runnable {
                     else {
                         request.addResponseHeader("Content-Length", String.valueOf(request.getResponseBody().length));
                     }
+                    boolean closeConnection = checkForClosingConnection(request);
                     out.write((request.getResponseLine() + "\r\n" + request.responseHeadersToString() + "\r\n").getBytes(StandardCharsets.UTF_8));
                     out.write(request.getResponseBody());
+                    if (closeConnection) {
+                        return;
+                    }
                 } else if (requestType.equals("POST")) {
                     boolean succes = postRequest(request);
                     if (request.getResponseBody().length == 0) {
@@ -94,8 +98,12 @@ public class RequestHandler implements Runnable {
                     else {
                         request.addResponseHeader("Content-Length", String.valueOf(request.getResponseBody().length));
                     }
+                    boolean closeConnection = checkForClosingConnection(request);
                     out.write((request.getResponseLine() + "\r\n" + request.responseHeadersToString() + "\r\n").getBytes(StandardCharsets.UTF_8));
                     out.write(request.getResponseBody());
+                    if (closeConnection) {
+                        return;
+                    }
                 }
             }
         }
@@ -194,5 +202,14 @@ public class RequestHandler implements Runnable {
 
     private void writeFile(String file, String content) throws IOException {
         Files.writeString(Path.of(file), content);
+    }
+
+    private boolean checkForClosingConnection(Request request) throws IOException {
+        String closeConnectionHeader = getRequestHeaderValue(request.getRequestHeaders(), "Connection");
+        if (closeConnectionHeader != null && closeConnectionHeader.equals("close")) {
+            request.addResponseHeader("Connection", "close");
+            return true;
+        }
+        return false;
     }
 }
