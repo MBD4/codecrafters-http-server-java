@@ -1,9 +1,6 @@
-[![progress-banner](https://backend.codecrafters.io/progress/http-server/109b090b-268d-4e38-a518-ff1e154c0648)](https://app.codecrafters.io/users/MBD4?r=2qF)
-
 # HTTP Server in Java
 
-An HTTP/1.1 server built from scratch in Java using raw TCP sockets, as part of the
-[CodeCrafters "Build your own HTTP server"](https://app.codecrafters.io/courses/http-server/overview) challenge.
+An HTTP/1.1 server built from scratch in Java using raw TCP sockets.
 No HTTP libraries or frameworks are used. All parsing, routing and response handling is written by hand.
 
 ## Features
@@ -43,8 +40,7 @@ curl -v -H "Accept-Encoding: gzip" http://localhost:4221/echo/hello --output -
 
 I wrote all of the code and did all of the debugging myself, except for once or twice when I was
 really stuck and asked an AI assistant (Claude) for a hint or an explanation. I explicitly asked it not to give me code.
-After finishing each stage, I also had it review my code so I could find bugs and improve
-the structure.
+I also had it review my code so I could find bugs, the tests didn't catch and improve the structure.
 
 ## What I learned
 
